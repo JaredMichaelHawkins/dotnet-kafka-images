@@ -1,0 +1,105 @@
+volumes:
+    qm1data:
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  broker:
+    image: confluentinc/cp-kafka:7.6.1
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://broker:29092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    depends_on:
+      - zookeeper
+
+  topic-setup:
+    image: confluentinc/cp-kafka:7.6.1
+    volumes:
+      - ./topic.sh:/create-topics.sh
+    command: "/create-topics.sh"
+    depends_on:
+      - zookeeper
+      - broker
+
+
+  jaeger:
+      image: jaegertracing/all-in-one:latest
+      ports:
+          - "6831:6831/udp"
+          - "6832:6832/udp"
+          - "5778:5778"
+          - "16686:16686"
+          - "14250:14250"
+          - "14268:14268"
+          - "14269:14269"
+      environment:
+          METRICS_STORAGE_TYPE: "prometheus"
+          PROMETHEUS_SERVER_URL: "http://prometheus:9090"
+
+  prometheus:
+      image: prom/prometheus
+      volumes:
+          - "./prometheus.yaml:/etc/prometheus.yaml"
+      ports:
+          - "9090:9090"
+      command:
+          - "--config.file=/etc/prometheus.yaml"
+          - "--web.enable-remote-write-receiver"
+          - "--enable-feature=exemplar-storage"
+
+  collector:
+    image: otel/opentelemetry-collector:0.70.0
+    command: [ "--config=/etc/collector.yaml" ]
+    volumes:
+      - ./collector.yaml:/etc/collector.yaml
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "9201:9201"
+    depends_on:
+        - jaeger
+        - prometheus
+
+  consumer:
+    build:
+      dockerfile: ./Consumer/Dockerfile
+    image: consumer
+    environment:
+      DOTNET_ENVIRONMENT: "Development"
+      KAFKA_CONSUMERSETTINGS_BOOTSTRAPSERVERS: "broker:29092"
+      KAFKA_CONSUMERSETTINGS_GROUPID: "poc_topic"
+      KAFKA_TOPICNAME: "poc_topic"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://collector:4317"
+    depends_on:
+      - collector
+      - topic-setup
+
+  producer:
+    build:
+        dockerfile: ./Producer/Dockerfile
+    image: producer
+    environment:
+        DOTNET_ENVIRONMENT: Development
+        KAFKA_PRODUCERSETTINGS_BOOTSTRAPSERVERS: broker:29092
+        KAFKA_TOPICNAME: poc_topic
+        OTEL_EXPORTER_OTLP_ENDPOINT: http://collector:4317
+        ASPNETCORE_URLS: http://+:8080
+    ports:
+        - "8080:8080"
+    depends_on:
+        - collector
+        - topic-setup
+        - consumer

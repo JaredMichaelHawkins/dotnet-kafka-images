@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "Producer.name" . }}
+  labels:
+    {{- include "Producer.labels" . | nindent 4 }}
+data:
+  appsettings.json: |
+    {
+      "Logging": {
+        "LogLevel": {
+          "Default": "Information",
+          "Microsoft.Hosting.Lifetime": "Information"
+        }
+      },
+      "Kafka": {
+        "ProducerSettings": {
+          "BootstrapServers": "broker.jared.svc.cluster.local:9092"
+        },
+        "TopicName": "poc_topic"
+      },
+      "AllowedHosts": "*",
+      "OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector.jared.svc.cluster.local::4317"
+    }

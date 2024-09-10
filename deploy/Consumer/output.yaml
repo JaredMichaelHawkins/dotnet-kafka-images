@@ -1,0 +1,127 @@
+---
+# Source: consumer/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: consumer
+  labels:
+    helm.sh/chart: consumer-0.1.0
+    app.kubernetes.io/name: consumer
+    app.kubernetes.io/instance: test
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+automountServiceAccountToken: true
+---
+# Source: consumer/templates/cm.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: consumer
+  labels:
+    helm.sh/chart: consumer-0.1.0
+    app.kubernetes.io/name: consumer
+    app.kubernetes.io/instance: test
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+data:
+  appsettings.json: |
+    {
+      "DOTNET_ENVIRONMENT": "Development",
+      "Kafka": {
+        "ConsumerSettings": {
+          "BootstrapServers": "broker.jared.svc.cluster.local:29092",
+          "GroupId": "poc_topic"
+        },
+        "TopicName": "poc_topic"
+      },
+      "Otel": {
+        "Exporter": {
+          "Otlp": {
+            "Endpoint": "http://collector.jared.svc.cluster.local::4317"
+          }
+        }
+      }
+    }
+---
+# Source: consumer/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: consumer
+  labels:
+    helm.sh/chart: consumer-0.1.0
+    app.kubernetes.io/name: consumer
+    app.kubernetes.io/instance: test
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: consumer
+    app.kubernetes.io/instance: test
+---
+# Source: consumer/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: consumer
+  labels:
+    helm.sh/chart: consumer-0.1.0
+    app.kubernetes.io/name: consumer
+    app.kubernetes.io/instance: test
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: consumer
+      app.kubernetes.io/instance: test
+  template:
+    metadata:
+      labels:
+        helm.sh/chart: consumer-0.1.0
+        app.kubernetes.io/name: consumer
+        app.kubernetes.io/instance: test
+        app.kubernetes.io/version: "1.16.0"
+        app.kubernetes.io/managed-by: Helm
+    spec:
+      serviceAccountName: consumer
+      securityContext:
+        {}
+      containers:
+        - name: consumer
+          securityContext:
+            {}
+          image: "ghcr.io/jaredmichaelhawkins/dotnet-kafka-images-consumer:latest"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+          resources:
+            {}
+          volumeMounts:
+            - mountPath: /app/config
+              name: config-volume
+              subPath: appsettings.json
+      volumes:
+        - configMap:
+            items:
+            - key: appsettings.json
+              path: appsettings.json
+            name: consumer
+          name: config-volume

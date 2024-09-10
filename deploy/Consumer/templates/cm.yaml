@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "Consumer.name" . }}
+  labels:
+    {{- include "Consumer.labels" . | nindent 4 }}
+data:
+  appsettings.json: |
+    {
+      "DOTNET_ENVIRONMENT": "Development",
+      "Kafka": {
+        "ConsumerSettings": {
+          "BootstrapServers": "broker.jared.svc.cluster.local:29092",
+          "GroupId": "poc_topic"
+        },
+        "TopicName": "poc_topic"
+      },
+      "Otel": {
+        "Exporter": {
+          "Otlp": {
+            "Endpoint": "http://collector.jared.svc.cluster.local::4317"
+          }
+        }
+      }
+    }
